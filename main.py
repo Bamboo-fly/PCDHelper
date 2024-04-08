@@ -1,17 +1,15 @@
 import os
-from open3D import displaySettings
 os.environ['PYTHONHTTPSVERIFY'] = '0'
-
 #引入QT界面
 import sys
-from QT import second
-from PyQt5.QtWidgets import QApplication,QMainWindow,QWidget
-from PyQt5.QtGui import QWindow
-from PyQt5.QtCore import QTimer
-import win32gui
+# 引入 PyQt5 库
+from PyQt5.QtWidgets import QApplication, QMainWindow
+from QT import third
 
 # 主程序
 if __name__ == "__main__":
+
+    print(sys.path)
 
     # #开启TCP网络服务接收点云数据
     # #netWork.net_work()
@@ -30,7 +28,7 @@ if __name__ == "__main__":
     mainWindow = QMainWindow()
 
     # 创建ui，引用demo1文件中的Ui_MainWindow类
-    ui = second.Ui_MainWindow()
+    ui = third.Ui_MainWindow()
     # 调用Ui_MainWindow类的setupUi，创建初始组件
     ui.setupUi(mainWindow)
     # 创建窗口
