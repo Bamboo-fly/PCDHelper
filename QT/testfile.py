@@ -15,6 +15,29 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(1500, 1000)
+
+        # 创建菜单栏和菜单选项
+        self.menubar = QtWidgets.QMenuBar(MainWindow)
+
+        self.menu_file = QtWidgets.QMenu(self.menubar)
+        self.menu_file.setTitle("文件")
+
+        self.action_open = QtWidgets.QAction("读取", MainWindow)
+        self.action_open.triggered.connect(self.file_open)
+
+        self.action_save = QtWidgets.QAction("保存", MainWindow)
+        self.action_save.triggered.connect(self.file_save)
+
+        self.menu_file.addAction(self.action_open)
+        self.menu_file.addAction(self.action_save)
+
+        self.menubar.addMenu(self.menu_file)
+        MainWindow.setMenuBar(self.menubar)
+
+        centralwidget = QtWidgets.QWidget(MainWindow)
+        centralwidget.setObjectName("centralwidget")
+        gridLayout = QtWidgets.QGridLayout(centralwidget)
+
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
@@ -48,17 +71,13 @@ class Ui_MainWindow(object):
         self.horizontalLayout.setStretch(1, 8)
         self.gridLayout.addLayout(self.horizontalLayout, 1, 0, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
-        self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 828, 22))
-        self.menubar.setObjectName("menubar")
-        MainWindow.setMenuBar(self.menubar)
         self.statusbar = QtWidgets.QStatusBar(MainWindow)
         self.statusbar.setObjectName("statusbar")
         MainWindow.setStatusBar(self.statusbar)
 
         # 设置窗口图标
         icon = QtGui.QIcon()
-        icon.addFile('C:\\Users\\Bamboo\\Desktop\\小米账号.png', QtCore.QSize(16, 16))  # 添加图标文件的路径和尺寸
+        icon.addFile('C:/Users/Bamboo/Desktop/小米账号.png', QtCore.QSize(16, 16))  # 更新图标文件的路径和尺寸
         MainWindow.setWindowIcon(icon)
 
         self.retranslateUi(MainWindow)
@@ -76,3 +95,11 @@ class Ui_MainWindow(object):
 
         self.groupBox.setStyleSheet("font-size: 16pt;")
         self.groupBox_2.setStyleSheet("font-size: 16pt;")
+
+    def file_open(self):
+        # 处理“读取”文件的函数逻辑
+        pass
+
+    def file_save(self):
+        # 处理“保存”文件的函数逻辑
+        pass
