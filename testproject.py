@@ -1,37 +1,29 @@
 import open3d as o3d
-import numpy as np
 
-def process_and_visualize_point_cloud(pcd_path, radius=0.01, non_max_radius=0.005, gamma_21=0.975, gamma_32=0.975):
-    # 加载点云文件
-    point_cloud_o3d = o3d.io.read_point_cloud(pcd_path)
+def find_keypoints_using_mls(pcd_path, search_radius=0.1):
+    # 读取点云文件
+    point_cloud = o3d.io.read_point_cloud(pcd_path)
 
-    def extract_iss_keypoints(point_cloud, radius, non_max_radius, gamma_21, gamma_32):
-        keypoints = o3d.geometry.keypoint.compute_iss_keypoints(point_cloud,
-                                                                salient_radius=radius,
-                                                                non_max_radius=non_max_radius,
-                                                                gamma_21=gamma_21,
-                                                                gamma_32=gamma_32,
-                                                                min_neighbors=5)
-        return keypoints
+    # 进行 MLS 曲面重建
+    mls_pcd = point_cloud.voxel_down_sample(voxel_size=0.005)
+    search_param = o3d.geometry.KDTreeSearchParamHybrid(radius=search_radius, max_nn=30)  # 添加 max_nn 参数
+    mls_pcd.estimate_normals(search_param)
 
-    # 提取关键点
-    keypoints = extract_iss_keypoints(point_cloud_o3d, radius, non_max_radius, gamma_21, gamma_32)
+    # 找出关键点
+    keypoints = mls_pcd.detect_keypoints(o3d.geometry.Feature.Normal, search_param)
 
-    # 输出关键点的数量
-    num_keypoints = len(keypoints.points)
-    print("关键点的数量：", num_keypoints)
+    # 将关键点设置为蓝色，非关键点设置为红色
+    colors = [[1, 0, 0] for _ in range(len(mls_pcd.points))]  # 非关键点设置为红色
+    for key_index in keypoints:
+        colors[key_index] = [0, 0, 1]  # 关键点设置为蓝色
+    mls_pcd.colors = o3d.utility.Vector3dVector(colors)
 
-    # 设置点云颜色
-    point_cloud_o3d.paint_uniform_color([1, 1, 0])  # 设置点云颜色为黄色
-    all_points_colors = np.full((len(point_cloud_o3d.points), 3), [1, 0, 0])  # 红色
-    keypoints_array = np.asarray(keypoints.points)
-    keypoints_indices = [np.where((np.asarray(point_cloud_o3d.points) == kp).all(axis=1))[0][0] for kp in keypoints_array]
-    all_points_colors[keypoints_indices] = [0, 0, 0]  # 黑色
-    point_cloud_o3d.colors = o3d.utility.Vector3dVector(all_points_colors)
+    return mls_pcd
 
-    # 可视化结果
-    o3d.visualization.draw_geometries([point_cloud_o3d])
+# 示例用法
+pcd_path = "C:\\Users\\Bamboo\\Desktop\\rabbit.pcd"  # 替换为您的 PCD 文件路径
+search_radius = 0.1  # MLS 查询半径
+processed_pcd = find_keypoints_using_mls(pcd_path, search_radius)
 
-# 调用函数以处理和可视化点云数据
-pcd_path = "C:/Users/Bamboo/Desktop/rabbit.pcd"  # 替换为您自己的PCD文件路径
-process_and_visualize_point_cloud(pcd_path)
+# 展示处理后的点云文件
+o3d.visualization.draw_geometries([processed_pcd], window_name='MLS Key Points')

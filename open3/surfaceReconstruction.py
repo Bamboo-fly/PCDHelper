@@ -1,5 +1,6 @@
 import open3d as o3d
 import numpy as np
+
 def calculate_normals(point_cloud, radius):
     # 估计点云的法线
     point_cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=radius, max_nn=30))

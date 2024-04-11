@@ -170,12 +170,12 @@
   </action>
   <action name="actionSIFT">
    <property name="text">
-    <string>SIFT</string>
+    <string>K-Means</string>
    </property>
   </action>
   <action name="actionHarris">
    <property name="text">
-    <string>Harris</string>
+    <string>MLS</string>
    </property>
   </action>
   <action name="actionVoxel">

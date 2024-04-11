@@ -1,15 +1,11 @@
 import sys
 import time
-from copy import deepcopy
 
 import open3d as o3d
-from PyQt5.QtWidgets import QInputDialog, QColorDialog, QApplication, QMainWindow, QWidget, QPushButton, QFileDialog, \
+from PyQt5.QtWidgets import QSpinBox, QColorDialog, QApplication, QMainWindow, QWidget, QPushButton, QFileDialog, \
     QDialog, QVBoxLayout, QRadioButton, QLabel, QMessageBox, QDoubleSpinBox
 from PyQt5.QtGui import QWindow, QIcon
 import win32gui
-from open3d.cpu.pybind import camera
-from pyntcloud import PyntCloud
-
 
 import third
 import numpy as np
@@ -17,6 +13,8 @@ from open3 import displaySettings
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import QTimer, Qt  # 导入 Qt 模块
 
+from sklearn.cluster import KMeans
+from open3 import filtering,surfaceReconstruction
 
 class MainWindow(QMainWindow):
     # 这里是类的构造函数，创建类的实例时做初始化工作
@@ -59,6 +57,16 @@ class MainWindow(QMainWindow):
         # 没20毫秒触发一次更新渲染函数
         self.clock.start(20)
         self.draw_test()
+
+    def cleanup(self):
+        # 清理资源、关闭窗口等操作
+        if self.vis:
+            self.vis.clear_geometries()
+            self.vis.destroy_window()
+            self.vis = None
+        if self.sub_window:
+            self.sub_window.destroy()
+        # 可以添加其他需要的清理操作
 
     def draw_test(self):
         # 添加几何体时同时将其添加到 self.geometries 列表中
@@ -267,10 +275,184 @@ class MainWindow(QMainWindow):
         all_points_colors[keypoints_indices] = [0, 0, 0]  # 黑色
         point_cloud_o3d.colors = o3d.utility.Vector3dVector(all_points_colors)
 
+        self.ui.textBrowser_2.append(f"关键点数量: {num_keypoints}")
+
         self.vis.add_geometry(point_cloud_o3d)
         self.vis.update_geometry(point_cloud_o3d)
         self.vis.poll_events()
         self.vis.run()
+
+    #采用网格滤波的方法，KMeans聚类找到关键点
+    def handle_sift_action(self):
+        dialog = SIFTParametersDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            num_keypoints, num_clusters, random_state = dialog.get_parameters()
+
+            if self.nowpath:
+                try:
+                    extracted_keypoints = self.extract_keypoints_from_point_cloud(self.nowpath,
+                                                                                  num_keypoints=num_keypoints,
+                                                                                  kmeans_n_clusters=num_clusters,
+                                                                                  kmeans_random_state=random_state)
+                    if extracted_keypoints is not None:
+                        keypoints_array = np.asarray(extracted_keypoints)
+                        print("提取的关键点：\n", keypoints_array)
+                except Exception as e:
+                    print(f"处理点云数据时发生异常：{e}")
+            else:
+                print("未指定点云文件路径，请先加载一个点云文件")
+
+    #KMeans聚类
+    def extract_keypoints_from_point_cloud(self, pcd_path, voxel_size=0.005, num_keypoints=100, kmeans_n_clusters=100,
+                                           kmeans_init='k-means++', kmeans_random_state=None):
+        # 读取点云文件
+        point_cloud = o3d.io.read_point_cloud(pcd_path)
+
+        # 下采样，使用体素网格滤波
+        downsampled_pc = point_cloud.voxel_down_sample(voxel_size)
+
+        # 检查点云数据是否为空
+        if len(downsampled_pc.points) == 0:
+            print("点云数据为空，请检查输入数据")
+            return None
+
+        # 将点云数据转换为 NumPy 数组
+        pcd_points = np.asarray(downsampled_pc.points)
+
+        # 使用 KMeans 算法找出聚类中心作为关键点
+        kmeans = KMeans(n_clusters=kmeans_n_clusters, init=kmeans_init, random_state=kmeans_random_state).fit(
+            pcd_points)
+        keypoints = kmeans.cluster_centers_
+
+        # 将所有非关键点设置为红色
+        downsampled_pc.paint_uniform_color([1, 0, 0])  # 红色
+
+        # 将关键点设置为黑色
+        keypoint_pc = o3d.geometry.PointCloud()
+        keypoint_pc.points = o3d.utility.Vector3dVector(keypoints)
+        keypoint_pc.paint_uniform_color([0, 0, 0])  # 黑色
+
+        self.ui.textBrowser_2.append(f"关键点数量: { len(keypoints)}")
+
+        # 可视化点云和关键点
+        self.vis.clear_geometries()
+        self.vis.add_geometry(downsampled_pc)
+        self.vis.add_geometry(keypoint_pc)
+        self.vis.update_geometry(downsampled_pc)
+        self.vis.update_geometry(keypoint_pc)
+
+        return keypoints
+
+    #MLS关键点测试
+    def show_MLS_dialog(self):
+        try:
+            dialog = MLSParametersDialog(self)
+            if dialog.exec_() == QDialog.Accepted:
+                # 获取 MLS 查询半径参数
+                search_radius_value = dialog.get_search_radius_value()
+
+                if self.nowpath:
+                    try:
+                        # 调用 MLS 处理方法，只传递 MLS 查询半径参数
+                        processed_pcd = self.find_keypoints_using_mls(self.nowpath, search_radius=search_radius_value)
+                        if processed_pcd is not None:
+                            self.vis.clear_geometries()
+                            self.vis.add_geometry(processed_pcd)
+                            self.vis.update_geometry(processed_pcd)
+                    except Exception as e:
+                        print(f"处理点云数据时发生异常：{e}")
+                else:
+                    print("未指定点云文件路径，请先加载一个点云文件")
+        except Exception as e:
+            print(f"处理 MLS 参数窗口时发生异常: {e}")
+
+    # 使用MLS方法寻找关键点
+    # 使用MLS方法寻找关键点，不再包含eps参数
+    def find_keypoints_using_mls(self, pcd_path, search_radius=0):
+        print("开始处理点云数据...")
+
+        point_cloud = o3d.io.read_point_cloud(pcd_path)
+        mls_pcd = point_cloud.voxel_down_sample(voxel_size=search_radius)
+        search_param = o3d.geometry.KDTreeSearchParamHybrid(radius=search_radius, max_nn=999)
+        mls_pcd.estimate_normals(search_param)
+
+        print("开始执行 MLS 算法...")
+        keypoints = mls_pcd.cluster_dbscan(eps=0.01, min_points=99, print_progress=False)
+
+        if keypoints is not None:
+            print(f"找到 {len(keypoints)} 个关键点")
+        else:
+            print("未找到关键点")
+
+        self.ui.textBrowser_2.append(f"关键点数量: {len(keypoints)}")
+
+        # 将关键点设置为黑色，非关键点设置为红色
+        colors = np.array([[1, 0, 0] for _ in range(len(mls_pcd.points))])  # 设置所有点为红色
+        colors[keypoints] = [0, 0, 0]  # 将关键点设置为黑色
+
+        mls_pcd.colors = o3d.utility.Vector3dVector(colors)
+
+        print("处理点云数据完成")
+        return mls_pcd
+
+    #实现滤波功能
+    def apply_filter(self, filter_type):
+        try:
+            if self.nowpath:
+                point_cloud = o3d.io.read_point_cloud(self.nowpath)
+
+                if filter_type == 'voxel':
+                    voxel_size = 0.005
+                    point_cloud = filtering.voxel_filter(point_cloud, voxel_size)
+                elif filter_type == 'statistical_outliers':
+                    point_cloud = filtering.remove_statistical_outliers(point_cloud)
+                elif filter_type == 'radius_outliers':
+                    radius = 0.005
+                    nb_points = 3
+                    point_cloud = filtering.remove_radius_outliers(point_cloud, radius, nb_points)
+                elif filter_type == 'pass_through':
+                    axis = 2
+                    min_bound = -0.03
+                    max_bound = 0.03
+                    point_cloud = filtering.pass_through_filter(point_cloud, axis, min_bound, max_bound)
+
+                self.vis.clear_geometries()
+                self.vis.add_geometry(point_cloud)
+                self.vis.update_geometry(point_cloud)
+            else:
+                print("未指定点云文件路径，请先加载一个点云文件")
+        except Exception as e:
+            print(f"处理点云数据时发生异常：{e}")
+
+    # 实现曲面重建功能
+    def apply_surfacebuilding(self, building_type):
+        try:
+            if self.nowpath:
+                point_cloud = o3d.io.read_point_cloud(self.nowpath)
+
+                # 计算法向量
+                point_cloud.estimate_normals()
+
+                mesh = None
+                if building_type == "poisson_reconstruction":
+                    mesh = surfaceReconstruction.poisson_reconstruction(point_cloud)
+                elif building_type == "alpha_shape_reconstruction":
+                    alpha = 0.007
+                    mesh = surfaceReconstruction.alpha_shape_reconstruction(point_cloud,alpha)
+                elif building_type == "marching_cubes_reconstruction":
+                    mesh = surfaceReconstruction.marching_cubes_reconstruction(point_cloud)
+                elif building_type == "surface_reconstruction":
+                    mesh = surfaceReconstruction.surface_reconstruction(point_cloud)
+
+                if mesh:
+                    self.vis.clear_geometries()
+                    self.vis.add_geometry(mesh)
+                    self.vis.update_geometry(mesh)
+
+            else:
+                print("未指定点云文件路径，请先加载一个点云文件")
+        except Exception as e:
+            print(f"处理点云数据时发生异常：{e}")
 
     #设置每个按键的动作函数
     def setupActions(self):
@@ -297,6 +479,38 @@ class MainWindow(QMainWindow):
 
         actionISS = self.ui.actionISS
         actionISS.triggered.connect(self.process_and_visualize_point_cloud)
+
+        actionSIFT = self.ui.actionSIFT
+        actionSIFT.triggered.connect(self.handle_sift_action)
+
+        actionHarris = self.ui.actionHarris
+        actionHarris.triggered.connect(self.show_MLS_dialog)
+
+        actionVoxel = self.ui.actionVoxel
+        actionVoxel.triggered.connect(lambda: self.apply_filter('voxel'))
+
+        action_8 = self.ui.action_8
+        action_8.triggered.connect(lambda: self.apply_filter('statistical_outliers'))
+
+        action_9 = self.ui.action_9
+        action_9.triggered.connect(lambda: self.apply_filter('radius_outliers'))
+
+        action_10 = self.ui.action_10
+        action_10.triggered.connect(lambda: self.apply_filter('pass_through'))
+
+        actionPoission = self.ui.actionPoission
+        actionPoission.triggered.connect(lambda: self.apply_surfacebuilding('poisson_reconstruction'))
+
+        action_11 = self.ui.action_11
+        action_11.triggered.connect(lambda: self.apply_surfacebuilding('alpha_shape_reconstruction'))
+
+        actionAlpha_Shape = self.ui.actionAlpha_Shape
+        actionAlpha_Shape.triggered.connect(lambda: self.apply_surfacebuilding('marching_cubes_reconstruction'))
+
+        actionMarching_Cubes = self.ui.actionMarching_Cubes
+        actionMarching_Cubes.triggered.connect(lambda: self.apply_surfacebuilding('surface_reconstruction'))
+
+
 
 #调整渲染方向的界面类
 class RenderDirectionDialog(QDialog):
@@ -365,7 +579,7 @@ class CustomInputDialog(QDialog):
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setLayout(layout)
 
-#实现ISS关键点提取的界面类
+#实现ISS关键点参数窗口类
 class ISSParametersDialog(QDialog):
     def __init__(self, parent=None):
         super(ISSParametersDialog, self).__init__(parent)
@@ -411,19 +625,88 @@ class ISSParametersDialog(QDialog):
     def get_scale_ratio(self):
         return self.double_spinbox_scale_ratio.value()
 
+#KMeans关键点参数窗口类
+class SIFTParametersDialog(QDialog):
+    def __init__(self, parent=None):
+        super(SIFTParametersDialog, self).__init__(parent)
+
+        self.setWindowTitle("设置关键点检测参数")
+        self.resize(300, 150)
+
+        self.num_keypoints_spinbox = QSpinBox()
+        self.num_keypoints_spinbox.setRange(1, 1000)
+        self.num_keypoints_spinbox.setValue(100)
+
+        self.num_clusters_spinbox = QSpinBox()
+        self.num_clusters_spinbox.setRange(1, 100)
+        self.num_clusters_spinbox.setValue(50)
+
+        self.random_state_spinbox = QSpinBox()
+        self.random_state_spinbox.setRange(0, 1000)
+        self.random_state_spinbox.setValue(0)
+
+        confirm_button = QPushButton("确定")
+        confirm_button.clicked.connect(self.accept)
+
+        cancel_button = QPushButton("取消")
+        cancel_button.clicked.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("关键点数量："))
+        layout.addWidget(self.num_keypoints_spinbox)
+        layout.addWidget(QLabel("KMeans 簇的数量："))
+        layout.addWidget(self.num_clusters_spinbox)
+        layout.addWidget(QLabel("随机种子："))
+        layout.addWidget(self.random_state_spinbox)
+        layout.addWidget(confirm_button)
+        layout.addWidget(cancel_button)
+
+        self.setLayout(layout)
+
+    def get_parameters(self):
+        num_keypoints = self.num_keypoints_spinbox.value()
+        num_clusters = self.num_clusters_spinbox.value()
+        random_state = self.random_state_spinbox.value()
+
+        return num_keypoints, num_clusters, random_state
+
+# MLS参数窗口类
+class MLSParametersDialog(QDialog):
+    def __init__(self, parent=None):
+        super(MLSParametersDialog, self).__init__(parent)
+        self.setWindowTitle("设置MLS参数")
+        self.setFixedSize(450, 170)
+
+        self.search_radius_spinbox = QDoubleSpinBox()
+        self.search_radius_spinbox.setRange(0.0001, 1.0)
+        self.search_radius_spinbox.setDecimals(3)  # 设置小数点精度为 4
+        self.search_radius_spinbox.setValue(0.005)  # 设置为0.0050，四位小数的格式
+
+        confirm_button = QPushButton("确定")
+        confirm_button.clicked.connect(self.accept)
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("MLS 查询半径："))
+        layout.addWidget(self.search_radius_spinbox)
+        layout.addWidget(confirm_button)
+
+        font = QFont("Microsoft YaHei", 12)
+        self.setStyleSheet("font-family: Microsoft YaHei; font-size: 12pt")
+        self.setFont(font)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setLayout(layout)
+
+    def get_search_radius_value(self):
+        return self.search_radius_spinbox.value()
+
+    def reject(self):
+        self.done(QDialog.Rejected)
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
 
-    def clean_up():
-        global window
-        if window:
-            window.vis.clear_geometries()
-            window.vis.destroy_window()
-            window.vis = None
-            window.sub_window.destroy()
-            del window
-
-    app.aboutToQuit.connect(clean_up)
+    #清理并释放相关资源
+    app.aboutToQuit.connect(window.cleanup)
     sys.exit(app.exec_())
