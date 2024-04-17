@@ -3,11 +3,11 @@ import time
 
 import open3d as o3d
 from PyQt5.QtWidgets import QSpinBox, QColorDialog, QApplication, QMainWindow, QWidget, QPushButton, QFileDialog, \
-    QDialog, QVBoxLayout, QRadioButton, QLabel, QMessageBox, QDoubleSpinBox
+    QDialog, QVBoxLayout, QRadioButton, QLabel, QMessageBox, QDoubleSpinBox, QAction
 from PyQt5.QtGui import QWindow, QIcon
 import win32gui
 
-import third
+import third,pointnet
 import numpy as np
 from open3 import displaySettings
 from PyQt5.QtGui import QFont
@@ -454,6 +454,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"处理点云数据时发生异常：{e}")
 
+    def open_pointnet_window(self):
+        self.pointnet_window = QMainWindow()
+        ui = pointnet.Ui_MainWindow()
+        ui.setupUi(self.pointnet_window)
+        self.pointnet_window.show()
+
     #设置每个按键的动作函数
     def setupActions(self):
         action = self.ui.action
@@ -509,6 +515,9 @@ class MainWindow(QMainWindow):
 
         actionMarching_Cubes = self.ui.actionMarching_Cubes
         actionMarching_Cubes.triggered.connect(lambda: self.apply_surfacebuilding('surface_reconstruction'))
+
+        action_12 = self.ui.action_12
+        action_12.triggered.connect(self.open_pointnet_window)
 
 
 

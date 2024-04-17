@@ -119,6 +119,7 @@
     <property name="title">
      <string>PointNet处理</string>
     </property>
+    <addaction name="action_12"/>
    </widget>
    <addaction name="menu"/>
    <addaction name="menu_2"/>
@@ -216,6 +217,11 @@
   <action name="actionMarching_Cubes">
    <property name="text">
     <string>体素重建</string>
+   </property>
+  </action>
+  <action name="action_12">
+   <property name="text">
+    <string>点云目标检测</string>
    </property>
   </action>
  </widget>
