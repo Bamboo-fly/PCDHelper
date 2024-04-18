@@ -31,7 +31,8 @@ class PointnetWindow(QMainWindow):
         self.clock.timeout.connect(self.draw_update)
         self.clock.start(20)
 
-        self.ui.actionpcd_pts.triggered.connect(self.load_pcd_file)
+        self.ui.actionpcd_pts.triggered.connect(self.load_pcdtotxt)
+        self.ui.actionpts_pcd.triggered.connect(self.load_txttopcd)
         self.ui.pushButton_2.clicked.connect(self.select_txt_file)
 
         # 添加一个标签用于显示结果
@@ -43,7 +44,7 @@ class PointnetWindow(QMainWindow):
         self.vis.poll_events()
         self.vis.update_renderer()
 
-    def load_pcd_file(self):
+    def load_pcdtotxt(self):
         options = QFileDialog.Options()
         pcd_path, _ = QFileDialog.getOpenFileName(self, "Select PCD file", "", "PCD files (*.pcd)", options=options)
         if pcd_path:
@@ -54,6 +55,35 @@ class PointnetWindow(QMainWindow):
             txt_path, _ = QFileDialog.getSaveFileName(self, "Select TXT file", "", "TXT files (*.txt)", options=options)
             if txt_path:
                 self.send_txt_content(txt_path)
+
+    def load_txttopcd(self):
+        options = QFileDialog.Options()
+        txt_path, _ = QFileDialog.getOpenFileName(self, "Select TXT file", "", "TXT files (*.txt)", options=options)
+
+        if txt_path:
+            points = []
+            with open(txt_path, 'r') as file:
+                lines = file.readlines()
+                for line in lines:
+                    data = line.strip().split(',')
+                    if len(data) != 6:
+                        print("Error: Data format is incorrect.")
+                        return
+
+                    point = list(map(float, data))
+                    points.append(point)
+
+            pcd_path, _ = QFileDialog.getSaveFileName(self, "Save PCD file", "", "PCD files (*.pcd)", options=options)
+            if pcd_path:
+                try:
+                    pcd = o3d.geometry.PointCloud()
+                    pcd.points = o3d.utility.Vector3dVector(np.array(points)[:, :3])
+                    o3d.io.write_point_cloud(pcd_path, pcd)
+                    print(f"PCD file saved successfully at: {pcd_path}")
+                    self.update_point_cloud(pcd_path)
+                    self.draw_point_cloud()
+                except Exception as e:
+                    print(f"Error saving PCD file: {e}")
 
     def send_txt_content(self, file_path):
         if self.point_cloud:
@@ -91,15 +121,6 @@ class PointnetWindow(QMainWindow):
                         if len(line.strip().split(',')) != 6:
                             print("Error: Data format is incorrect.")
                             return
-
-                    # 清空现有的几何体
-                    self.vis.clear_geometries()
-
-                    # 更新点云图像
-                    self.update_point_cloud(txt_path)
-
-                    # 将选择的 TXT 文件的点云图像渲染到界面上
-                    self.draw_point_cloud()
 
                     server_ip = "192.168.43.27"  # 服务器 IP 地址
                     server_port = 2345  # 服务器端口
