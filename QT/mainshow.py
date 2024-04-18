@@ -3,11 +3,11 @@ import time
 
 import open3d as o3d
 from PyQt5.QtWidgets import QSpinBox, QColorDialog, QApplication, QMainWindow, QWidget, QPushButton, QFileDialog, \
-    QDialog, QVBoxLayout, QRadioButton, QLabel, QMessageBox, QDoubleSpinBox, QAction
+    QDialog, QVBoxLayout, QRadioButton, QLabel, QMessageBox, QDoubleSpinBox
 from PyQt5.QtGui import QWindow, QIcon
 import win32gui
 
-import third,pointnet
+import third
 import numpy as np
 from open3 import displaySettings
 from PyQt5.QtGui import QFont
@@ -15,6 +15,10 @@ from PyQt5.QtCore import QTimer, Qt  # 导入 Qt 模块
 
 from sklearn.cluster import KMeans
 from open3 import filtering,surfaceReconstruction
+from pointnet.pointnet import Ui_MainWindow
+from PyQt5.QtWidgets import QMainWindow
+import pointnetshow
+
 
 class MainWindow(QMainWindow):
     # 这里是类的构造函数，创建类的实例时做初始化工作
@@ -454,11 +458,14 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"处理点云数据时发生异常：{e}")
 
-    def open_pointnet_window(self):
-        self.pointnet_window = QMainWindow()
-        ui = pointnet.Ui_MainWindow()
-        ui.setupUi(self.pointnet_window)
-        self.pointnet_window.show()
+    def on_action12_triggered(self):
+        try:
+            self.pointnet_window = QMainWindow()
+            ui = Ui_MainWindow()
+            ui.setupUi(self.pointnet_window)
+            self.pointnet_window.show()
+        except Exception as e:
+            print(f"Error in on_action12_triggered: {e}")
 
     #设置每个按键的动作函数
     def setupActions(self):
@@ -517,9 +524,7 @@ class MainWindow(QMainWindow):
         actionMarching_Cubes.triggered.connect(lambda: self.apply_surfacebuilding('surface_reconstruction'))
 
         action_12 = self.ui.action_12
-        action_12.triggered.connect(self.open_pointnet_window)
-
-
+        action_12.triggered.connect(self.on_action12_triggered)
 
 #调整渲染方向的界面类
 class RenderDirectionDialog(QDialog):
